@@ -1,0 +1,64 @@
+erDiagram
+    USERS ||--o{ ACCOUNTS : detine
+    ACCOUNTS ||--o{ PLANNED_PAYMENTS : planifica
+    ACCOUNTS ||--o{ TRANSACTIONS : debiteaza
+    ACCOUNTS ||--o{ TRANSACTIONS : crediteaza
+    CATEGORIES ||--o{ PLANNED_PAYMENTS : clasifica
+    CATEGORIES ||--o{ TRANSACTIONS : categoriseste
+    ACCOUNTS ||--o{ SAVINGS_GOALS : aloca
+
+    USERS {
+        int id PK
+        string email UK
+        string first_name
+        string last_name
+        timestamp created_at
+    }
+
+    ACCOUNTS {
+        int id PK
+        int user_id FK
+        string name
+        string type
+        decimal balance
+        string currency
+    }
+
+    CATEGORIES {
+        int id PK
+        string name UK
+        boolean is_income
+    }
+
+    PLANNED_PAYMENTS {
+        int id PK
+        int account_id FK
+        int category_id FK
+        string title
+        decimal amount
+        date target_month
+        date due_date
+        string status
+        boolean is_recurring
+    }
+
+    TRANSACTIONS {
+        int id PK
+        int source_account_id FK
+        int destination_account_id FK
+        int category_id FK
+        int planned_payment_id FK
+        string type
+        decimal amount
+        timestamp transaction_date
+        string description
+    }
+
+    SAVINGS_GOALS {
+        int id PK
+        int account_id FK
+        string title
+        decimal target_amount
+        decimal current_amount
+        date deadline
+    }
