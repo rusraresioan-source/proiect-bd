@@ -1,0 +1,105 @@
+erDiagram
+    users ||--o{ accounts : "detine (1,n)"
+    users ||--o{ categories : "personalizeaza (0,n)"
+    users ||--o{ payment_methods : "inregistreaza (0,n)"
+    users ||--o{ recurring_rules : "stabileste (0,n)"
+    currencies ||--o{ accounts : "denomineaza (1,n)"
+    categories ||--o{ subcategories : "grupeaza (1,n)"
+    accounts ||--o{ planned_payments : "asigura_fonduri (0,n)"
+    subcategories ||--o{ planned_payments : "incadreaza (1,n)"
+    recurring_rules ||--o{ planned_payments : "propaga (0,n)"
+    accounts ||--o{ transactions : "debiteaza_sursa (0,n)"
+    accounts ||--o{ transactions : "crediteaza_destinatie (0,n)"
+    subcategories ||--o{ transactions : "clasifica (0,n)"
+    payment_methods ||--o{ transactions : "instrumenteaza (0,n)"
+    accounts ||--o{ savings_goals : "tinte_economii (0,n)"
+
+    users {
+        int id PK
+        string email UK
+        string password_hash
+        string first_name
+        string last_name
+        timestamp created_at
+    }
+
+    currencies {
+        int id PK
+        string code UK
+        string name
+        string symbol
+        decimal exchange_rate
+    }
+
+    accounts {
+        int id PK
+        int user_id FK
+        int currency_id FK
+        string name
+        string type
+        decimal balance
+        timestamp updated_at
+    }
+
+    categories {
+        int id PK
+        int user_id FK "NULL pt sistem, explicit pt custom"
+        string name
+        boolean is_income
+    }
+
+    subcategories {
+        int id PK
+        int category_id FK
+        string name
+    }
+
+    payment_methods {
+        int id PK
+        int user_id FK
+        string name
+        string type
+        string masked_details
+    }
+
+    recurring_rules {
+        int id PK
+        int user_id FK
+        string frequency
+        int due_day
+        date start_date
+        date end_date
+    }
+
+    planned_payments {
+        int id PK
+        int account_id FK
+        int subcategory_id FK
+        int recurring_rule_id FK
+        string title
+        decimal amount
+        date target_month
+        date due_date
+        string status
+    }
+
+    transactions {
+        int id PK
+        int source_account_id FK
+        int destination_account_id FK
+        int subcategory_id FK
+        int payment_method_id FK
+        string type
+        decimal amount
+        timestamp transaction_date
+        string description
+    }
+
+    savings_goals {
+        int id PK
+        int account_id FK
+        string title
+        decimal target_amount
+        decimal current_amount
+        date deadline
+    }
