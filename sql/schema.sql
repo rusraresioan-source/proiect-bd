@@ -163,10 +163,7 @@ CREATE TABLE transactions (
     CONSTRAINT fk_transactions_payment_method 
         FOREIGN KEY (payment_method_id) REFERENCES payment_methods(id) 
         ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT chk_transactions_amount CHECK (amount > 0.00),
-    CONSTRAINT chk_transactions_accounts CHECK (
-        source_account_id IS NOT NULL OR destination_account_id IS NOT NULL
-    )
+    CONSTRAINT chk_transactions_amount CHECK (amount > 0.00)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 10. SAVINGS_GOALS
