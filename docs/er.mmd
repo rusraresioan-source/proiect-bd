@@ -1,0 +1,53 @@
+flowchart TD
+    %% Stiluri vizuale academice
+    classDef entity fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,font-weight:bold,color:#01579b;
+    classDef rel fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#e65100;
+
+    %% 1. ENTITĂȚI (Dreptunghiuri)
+    U[UTILIZATOR]:::entity
+    MON[VALUTĂ]:::entity
+    CONT[CONT_FINANCIAR]:::entity
+    CAT[CATEGORIE]:::entity
+    SUBCAT[SUBCATEGORIE]:::entity
+    MP[METODĂ_PLATĂ]:::entity
+    REC[REGULĂ_RECURENȚĂ]:::entity
+    PLAN[PLATĂ_PLANIFICATĂ]:::entity
+    TRANZ[TRANZACȚIE]:::entity
+    OBIECTIV[OBIECTIV_ECONOMII]:::entity
+
+    %% 2. RELAȚII (Romburi)
+    R_DETINE{deține}:::rel
+    R_EXPRIMA{exprimat în}:::rel
+    R_POZ_MP{posedă}:::rel
+    R_CONFIG_REC{configurează}:::rel
+    R_DEF_CAT{definește}:::rel
+    R_SUBDIV{include}:::rel
+    R_GEN_PLAN{generează}:::rel
+    R_AFECT_PLAN{afectează}:::rel
+    R_CLASIF_PLAN{clasificată prin}:::rel
+    R_SR_TRANZ{debitează sursă}:::rel
+    R_DST_TRANZ{creditează dest}:::rel
+    R_UTIL_MP{decontată prin}:::rel
+    R_CLASIF_TR{încadrată în}:::rel
+    R_ASOC_OB{asociat cu}:::rel
+
+    %% 3. CONEXIUNI CU CARDINALITĂȚI FORMALE (min, max)
+    U ---|"(1,1)"| R_DETINE ---|"(0,n)"| CONT
+    CONT ---|"(0,n)"| R_EXPRIMA ---|"(1,1)"| MON
+
+    U ---|"(1,1)"| R_POZ_MP ---|"(0,n)"| MP
+    U ---|"(1,1)"| R_CONFIG_REC ---|"(0,n)"| REC
+    U ---|"(0,1)"| R_DEF_CAT ---|"(0,n)"| CAT
+
+    CAT ---|"(1,1)"| R_SUBDIV ---|"(1,n)"| SUBCAT
+
+    REC ---|"(0,1)"| R_GEN_PLAN ---|"(0,n)"| PLAN
+    CONT ---|"(1,1)"| R_AFECT_PLAN ---|"(0,n)"| PLAN
+    SUBCAT ---|"(1,1)"| R_CLASIF_PLAN ---|"(0,n)"| PLAN
+
+    CONT ---|"(0,1)"| R_SR_TRANZ ---|"(0,n)"| TRANZ
+    CONT ---|"(0,1)"| R_DST_TRANZ ---|"(0,n)"| TRANZ
+    MP ---|"(0,1)"| R_UTIL_MP ---|"(0,n)"| TRANZ
+    SUBCAT ---|"(0,1)"| R_CLASIF_TR ---|"(0,n)"| TRANZ
+
+    CONT ---|"(1,1)"| R_ASOC_OB ---|"(0,n)"| OBIECTIV
