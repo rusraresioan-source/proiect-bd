@@ -39,7 +39,7 @@ INSERT INTO transactions (source_account_id, destination_account_id, subcategory
 (1, NULL, 3, 'CHELTUIALA', 245.50, 'Cumpărături săptămânale'),
 (1, 2, NULL, 'TRANSFER', 500.00, 'Economii lunare');
 
-INSERT INTO savings_goals (account_id, name, target_amount, current_amount, target_date) VALUES
+INSERT INTO savings_goals (account_id, title, target_amount, current_amount, deadline) VALUES
 (2, 'Fond de Urgență (6 luni)', 10000.00, 3200.00, '2027-06-01'),
 (2, 'Upgrade Stație Lucru & Laptop', 4500.00, 1350.00, '2027-03-15');
 
