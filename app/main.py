@@ -23,8 +23,85 @@ class FinanceApp(ctk.CTk):
         self.minsize(1120, 700)
         self.configure(fg_color=BG_DARK)
 
-        self.current_user_id = 1
+        self.current_user_id = None
+        self.current_user_name = ""
         self._configure_treeview_style()
+        self.show_login_screen()
+
+    def show_login_screen(self):
+        for w in self.winfo_children():
+            w.destroy()
+
+        wrapper = ctk.CTkFrame(self, fg_color=BG_DARK)
+        wrapper.pack(fill="both", expand=True)
+
+        box = ctk.CTkFrame(wrapper, width=430, fg_color=BG_CARD, corner_radius=14, border_width=1, border_color=BORDER_SUBTLE)
+        box.place(relx=0.5, rely=0.5, anchor="center")
+
+        ctk.CTkLabel(box, text="FINANȚE PERSONALE", font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"), text_color="#f8fafc").pack(pady=(26, 2), padx=34)
+        ctk.CTkLabel(box, text="Autentificare Multi-Utilizator (MySQL 3FN)", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(pady=(0, 18), padx=34)
+
+        tabs = ctk.CTkTabview(box, width=360, height=270, fg_color=BG_CARD)
+        tabs.pack(padx=30, pady=(0, 14))
+        tab_login = tabs.add("Autentificare")
+        tab_reg = tabs.add("Cont Nou")
+
+        # --- TAB AUTENTIFICARE ---
+        ctk.CTkLabel(tab_login, text="Email:", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor="w", padx=12, pady=(8, 2))
+        email_ent = ctk.CTkEntry(tab_login, placeholder_text="ex: rares@student.utcluj.ro", width=320, height=34)
+        email_ent.pack(padx=12)
+
+        ctk.CTkLabel(tab_login, text="Parolă:", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor="w", padx=12, pady=(10, 2))
+        pwd_ent = ctk.CTkEntry(tab_login, placeholder_text="••••••••", show="*", width=320, height=34)
+        pwd_ent.pack(padx=12)
+
+        def do_login():
+            u = db.authenticate_user(email_ent.get(), pwd_ent.get())
+            if not u:
+                messagebox.showerror("Eroare Autentificare", "Email sau parolă incorectă.")
+                return
+            self._start_authenticated_session(u["id"], u["full_name"])
+
+        ctk.CTkButton(tab_login, text="Intră în Cont", command=do_login, fg_color=ACCENT_BLUE, hover_color=ACCENT_HOVER, width=320, height=36, font=ctk.CTkFont(weight="bold")).pack(pady=(16, 6), padx=12)
+
+        def demo_login():
+            self._start_authenticated_session(1, "Rareș Rus (Demo)")
+
+        ctk.CTkButton(tab_login, text="⚡ Acces Rapid Demo (User #1)", command=demo_login, fg_color="#263040", hover_color="#334155", width=320, height=32, font=ctk.CTkFont(size=12)).pack(padx=12)
+
+        # --- TAB CONT NOU ---
+        ctk.CTkLabel(tab_reg, text="Nume Complet:", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor="w", padx=12, pady=(6, 2))
+        reg_name = ctk.CTkEntry(tab_reg, placeholder_text="ex: Andrei Popescu", width=320, height=32)
+        reg_name.pack(padx=12)
+
+        ctk.CTkLabel(tab_reg, text="Email:", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor="w", padx=12, pady=(6, 2))
+        reg_email = ctk.CTkEntry(tab_reg, placeholder_text="ex: andrei@email.com", width=320, height=32)
+        reg_email.pack(padx=12)
+
+        ctk.CTkLabel(tab_reg, text="Parolă:", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor="w", padx=12, pady=(6, 2))
+        reg_pwd = ctk.CTkEntry(tab_reg, placeholder_text="Minim 4 caractere", show="*", width=320, height=32)
+        reg_pwd.pack(padx=12)
+
+        def do_register():
+            if not reg_name.get().strip() or not reg_email.get().strip() or len(reg_pwd.get()) < 4:
+                messagebox.showerror("Validare", "Completează numele, email-ul și o parolă de minim 4 caractere.")
+                return
+            try:
+                u = db.register_user_acid(reg_name.get(), reg_email.get(), reg_pwd.get())
+                self._start_authenticated_session(u["id"], u["full_name"])
+                self.show_toast(f"✓ Cont creat automat cu Cont Principal!", "success")
+            except Exception as err:
+                messagebox.showerror("Eroare Înregistrare", str(err))
+
+        ctk.CTkButton(tab_reg, text="✓ Creează Cont și Intră", command=do_register, fg_color="#16a34a", hover_color="#15803d", width=320, height=34, font=ctk.CTkFont(weight="bold")).pack(pady=(12, 4), padx=12)
+
+        ctk.CTkButton(box, text="⚙ Configurare Server MySQL", command=self.open_db_config_dialog, fg_color="transparent", text_color=TEXT_MUTED, hover_color="#263040", height=28, font=ctk.CTkFont(size=11)).pack(pady=(0, 14))
+
+    def _start_authenticated_session(self, user_id, full_name):
+        self.current_user_id = user_id
+        self.current_user_name = full_name
+        for w in self.winfo_children():
+            w.destroy()
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -80,10 +157,22 @@ class FinanceApp(ctk.CTk):
         )
         self.conn_info_lbl.pack(anchor="w", padx=14, pady=(0, 6))
 
+        ctk.CTkLabel(
+            status_card, text=f"Utilizator: {self.current_user_name}",
+            text_color="#e2e8f0", font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")
+        ).pack(anchor="w", padx=14, pady=(0, 6))
+
         ctk.CTkButton(
             status_card, text="⚙ Configurează Conexiune",
             command=self.open_db_config_dialog,
             height=28, corner_radius=6, fg_color="#263040", hover_color="#334155",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")
+        ).pack(fill="x", padx=12, pady=(0, 6))
+
+        ctk.CTkButton(
+            status_card, text="⎋ Deconectare / Schimbă Cont",
+            command=self.show_login_screen,
+            height=28, corner_radius=6, fg_color="#7f1d1d", hover_color="#991b1b",
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")
         ).pack(fill="x", padx=12, pady=(0, 10))
 

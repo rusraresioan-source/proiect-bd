@@ -331,3 +331,56 @@ def create_savings_goal(account_id, title, target_amount, deadline):
     finally:
         cur.close()
         conn.close()
+
+
+def hash_password(raw_password):
+    import hashlib
+    return hashlib.sha256(raw_password.encode("utf-8")).hexdigest()
+
+
+def authenticate_user(email, password):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT id, full_name, email, password_hash FROM users WHERE email = %s", (email.strip(),))
+        user = cur.fetchone()
+        if not user:
+            return None
+        # Acceptăm atât parola criptată SHA-256, cât și parola din seed dacă e test
+        if user["password_hash"] in (hash_password(password), password):
+            return {"id": user["id"], "full_name": user["full_name"], "email": user["email"]}
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def register_user_acid(full_name, email, password):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        conn.start_transaction()
+        cur.execute(
+            "INSERT INTO users (full_name, email, password_hash) VALUES (%s, %s, %s)",
+            (full_name.strip(), email.strip(), hash_password(password))
+        )
+        new_user_id = cur.lastrowid
+
+        # Găsim moneda RON (sau prima monedă disponibilă) și îi creăm automat un cont principal
+        cur.execute("SELECT id FROM currencies WHERE code = 'RON' LIMIT 1")
+        row_curr = cur.fetchone()
+        curr_id = row_curr[0] if row_curr else 1
+
+        cur.execute("""
+            INSERT INTO accounts (user_id, currency_id, name, type, balance)
+            VALUES (%s, %s, 'Cont Principal', 'CURENT', 0.00)
+        """, (new_user_id, curr_id))
+
+        conn.commit()
+        return {"id": new_user_id, "full_name": full_name.strip(), "email": email.strip()}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
