@@ -1,19 +1,10 @@
 import customtkinter as ctk
 from tkinter import messagebox, ttk
-import mysql.connector
 from decimal import Decimal
-from datetime import date
-import calendar
+import db
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
-
-DB_CONFIG = {
-    "host": "localhost",
-    "user": "app_user",
-    "password": "app_pass",
-    "database": "personal_finance"
-}
 
 BG_DARK = "#14181f"
 BG_CARD = "#1e242d"
@@ -22,6 +13,7 @@ ACCENT_BLUE = "#2563eb"
 ACCENT_HOVER = "#1d4ed8"
 TEXT_MUTED = "#94a3b8"
 BORDER_SUBTLE = "#2d3748"
+
 
 class FinanceApp(ctk.CTk):
     def __init__(self):
@@ -81,10 +73,19 @@ class FinanceApp(ctk.CTk):
             status_card, text="● MySQL 8.0 Conectat",
             text_color="#22c55e", font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold")
         ).pack(anchor="w", padx=14, pady=(10, 2))
-        ctk.CTkLabel(
-            status_card, text="Cont: app_user (InnoDB 3FN)",
+
+        self.conn_info_lbl = ctk.CTkLabel(
+            status_card, text=f"{db.DB_CONFIG['user']}@{db.DB_CONFIG['host']}:{db.DB_CONFIG['port']}",
             text_color=TEXT_MUTED, font=ctk.CTkFont(family="Segoe UI", size=11)
-        ).pack(anchor="w", padx=14, pady=(0, 10))
+        )
+        self.conn_info_lbl.pack(anchor="w", padx=14, pady=(0, 6))
+
+        ctk.CTkButton(
+            status_card, text="⚙ Configurează Conexiune",
+            command=self.open_db_config_dialog,
+            height=28, corner_radius=6, fg_color="#263040", hover_color="#334155",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")
+        ).pack(fill="x", padx=12, pady=(0, 10))
 
         # --- ZONA PRINCIPALĂ ---
         self.main_frame = ctk.CTkFrame(self, corner_radius=14, fg_color=BG_DARK)
@@ -93,7 +94,58 @@ class FinanceApp(ctk.CTk):
         self.show_dashboard()
 
     # =========================================================================
-    # EFECTE VIZUALE: Toast Notification, Count-Up KPI & Progress Bar Animat
+    # DIALOG CONFIGURARE CONEXIUNE (delegă validarea către db.py)
+    # =========================================================================
+    def open_db_config_dialog(self):
+        win = ctk.CTkToplevel(self)
+        win.title("Configurare Conexiune MySQL")
+        win.geometry("420x420")
+        win.configure(fg_color=BG_CARD)
+        win.grab_set()
+
+        ctk.CTkLabel(win, text="Parametri Conexiune MySQL", font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold")).pack(pady=(16, 10))
+
+        fields = {}
+        specs = [
+            ("Host / IP Server:", "host", str(db.DB_CONFIG["host"]), False),
+            ("Port:", "port", str(db.DB_CONFIG["port"]), False),
+            ("Bază de Date:", "database", str(db.DB_CONFIG["database"]), False),
+            ("Utilizator MySQL:", "user", str(db.DB_CONFIG["user"]), False),
+            ("Parolă:", "password", str(db.DB_CONFIG["password"]), True),
+        ]
+
+        for label_txt, key, val, is_pwd in specs:
+            ctk.CTkLabel(win, text=label_txt, font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor="w", padx=28)
+            ent = ctk.CTkEntry(win, width=364, height=32, show="*" if is_pwd else "")
+            ent.insert(0, val)
+            ent.pack(pady=(2, 8), padx=28)
+            fields[key] = ent
+
+        def apply_and_test():
+            try:
+                new_cfg = {
+                    "host": fields["host"].get().strip(),
+                    "port": int(fields["port"].get().strip()),
+                    "database": fields["database"].get().strip(),
+                    "user": fields["user"].get().strip(),
+                    "password": fields["password"].get(),
+                }
+                db.test_and_update_config(new_cfg)
+                self.conn_info_lbl.configure(text=f"{db.DB_CONFIG['user']}@{db.DB_CONFIG['host']}:{db.DB_CONFIG['port']}")
+                win.destroy()
+                self.show_dashboard()
+                self.show_toast(f"✓ Conectat la {db.DB_CONFIG['user']}@{db.DB_CONFIG['host']}!", "success")
+            except Exception as err:
+                messagebox.showerror("Eroare Conectare", f"Nu s-a putut realiza conexiunea:\n{err}", parent=win)
+
+        ctk.CTkButton(
+            win, text="✓ Testează și Conectează", command=apply_and_test,
+            fg_color="#16a34a", hover_color="#15803d", height=36, width=200,
+            font=ctk.CTkFont(weight="bold")
+        ).pack(pady=12)
+
+    # =========================================================================
+    # EFECTE VIZUALE & STILIZARE
     # =========================================================================
     def show_toast(self, message, kind="success"):
         colors = {
@@ -103,12 +155,11 @@ class FinanceApp(ctk.CTk):
         }
         bg, border = colors.get(kind, colors["success"])
         toast = ctk.CTkFrame(self, fg_color=bg, corner_radius=10, border_width=1, border_color=border)
-        lbl = ctk.CTkLabel(
+        ctk.CTkLabel(
             toast, text=message,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
             text_color="#f8fafc"
-        )
-        lbl.pack(padx=18, pady=12)
+        ).pack(padx=18, pady=12)
         toast.place(relx=0.98, rely=0.96, anchor="se")
         toast.lift()
         self.after(3000, lambda: toast.destroy() if toast.winfo_exists() else None)
@@ -119,7 +170,6 @@ class FinanceApp(ctk.CTk):
         if step >= steps:
             label_widget.configure(text=f"{prefix}{target_val:.2f}{suffix}")
             return
-        # Easing cubic out
         t = step / steps
         eased = 1 - (1 - t) ** 3
         current_val = float(target_val) * eased
@@ -171,13 +221,6 @@ class FinanceApp(ctk.CTk):
             else:
                 btn.configure(fg_color="transparent", text_color="#cbd5e1")
 
-    def get_connection(self):
-        try:
-            return mysql.connector.connect(**DB_CONFIG)
-        except mysql.connector.Error as err:
-            messagebox.showerror("Eroare Conexiune MySQL", f"Nu s-a putut conecta la baza de date:\n{err}")
-            return None
-
     def clear_main_frame(self):
         for widget in self.main_frame.winfo_children():
             widget.destroy()
@@ -188,42 +231,12 @@ class FinanceApp(ctk.CTk):
     def show_dashboard(self):
         self._set_active_nav("dashboard")
         self.clear_main_frame()
-        conn = self.get_connection()
-        if not conn:
+        try:
+            summary = db.get_dashboard_summary(self.current_user_id)
+        except Exception as err:
+            messagebox.showerror("Eroare Bază de Date", str(err))
             return
-        cursor = conn.cursor(dictionary=True)
 
-        cursor.execute("""
-            SELECT COALESCE(SUM(a.balance * c.exchange_rate), 0) AS total_brut
-            FROM accounts a
-            JOIN currencies c ON a.currency_id = c.id
-            WHERE a.user_id = %s
-        """, (self.current_user_id,))
-        sold_brut = Decimal(cursor.fetchone()["total_brut"])
-
-        cursor.execute("""
-            SELECT COALESCE(SUM(pp.amount * c.exchange_rate), 0) AS total_planificat
-            FROM planned_payments pp
-            JOIN accounts a ON pp.account_id = a.id
-            JOIN currencies c ON a.currency_id = c.id
-            WHERE a.user_id = %s
-              AND pp.status = 'PLANIFICAT'
-              AND pp.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 60 DAY)
-        """, (self.current_user_id,))
-        obligatii = Decimal(cursor.fetchone()["total_planificat"])
-
-        cursor.execute("""
-            SELECT COALESCE(SUM(sg.current_amount * c.exchange_rate), 0) AS total_economii
-            FROM savings_goals sg
-            JOIN accounts a ON sg.account_id = a.id
-            JOIN currencies c ON a.currency_id = c.id
-            WHERE a.user_id = %s
-        """, (self.current_user_id,))
-        economii_blocate = Decimal(cursor.fetchone()["total_economii"])
-
-        disponibil_real = sold_brut - obligatii - economii_blocate
-
-        # Header
         hdr = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         hdr.pack(fill="x", padx=10, pady=(4, 10))
         ctk.CTkLabel(
@@ -237,24 +250,21 @@ class FinanceApp(ctk.CTk):
             text_color=TEXT_MUTED
         ).pack(anchor="w", pady=(2, 0))
 
-        # 4 Carduri KPI cu Count-Up
         cards_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         cards_frame.pack(fill="x", padx=4, pady=4)
         cards_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
-        self._create_kpi_card(cards_frame, 0, "SOLD BRUT TOTAL", sold_brut, "", "Total conturi active", "#38bdf8")
-        self._create_kpi_card(cards_frame, 1, "OBLIGAȚII (60 ZILE)", obligatii, "- ", "Plăți planificate neachitate", "#fb923c")
-        self._create_kpi_card(cards_frame, 2, "ECONOMII REZERVATE", economii_blocate, "- ", "Alocate în obiective", "#a78bfa")
-        culoare_disp = "#22c55e" if disponibil_real >= 0 else "#ef4444"
-        self._create_kpi_card(cards_frame, 3, "FOND DISPONIBIL REAL", disponibil_real, "", "Buget sigur de cheltuit", culoare_disp)
+        disp = summary["disponibil_real"]
+        self._create_kpi_card(cards_frame, 0, "SOLD BRUT TOTAL", summary["sold_brut"], "", "Total conturi active", "#38bdf8")
+        self._create_kpi_card(cards_frame, 1, "OBLIGAȚII (60 ZILE)", summary["obligatii"], "- ", "Plăți planificate neachitate", "#fb923c")
+        self._create_kpi_card(cards_frame, 2, "ECONOMII REZERVATE", summary["economii_blocate"], "- ", "Alocate în obiective", "#a78bfa")
+        self._create_kpi_card(cards_frame, 3, "FOND DISPONIBIL REAL", disp, "", "Buget sigur de cheltuit", "#22c55e" if disp >= 0 else "#ef4444")
 
-        # Rând mijloc: Mini-carduri conturi + Grafic Cheltuieli pe Categorii
         mid_row = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         mid_row.pack(fill="x", padx=4, pady=(8, 4))
         mid_row.grid_columnconfigure(0, weight=3)
         mid_row.grid_columnconfigure(1, weight=2)
 
-        # Coloana stângă: Conturile mele
         acc_box = ctk.CTkFrame(mid_row, fg_color=BG_CARD, corner_radius=12, border_width=1, border_color=BORDER_SUBTLE)
         acc_box.grid(row=0, column=0, padx=6, sticky="nsew")
         ctk.CTkLabel(
@@ -262,21 +272,13 @@ class FinanceApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), text_color="#f8fafc"
         ).pack(anchor="w", padx=16, pady=(10, 6))
 
-        cursor.execute("""
-            SELECT a.name, a.type, a.balance, c.code AS currency_code
-            FROM accounts a
-            JOIN currencies c ON a.currency_id = c.id
-            WHERE a.user_id = %s
-            ORDER BY a.id ASC
-        """, (self.current_user_id,))
-        for acc in cursor.fetchall():
+        for acc in summary["accounts"]:
             r_acc = ctk.CTkFrame(acc_box, fg_color="#161b22", corner_radius=8)
             r_acc.pack(fill="x", padx=14, pady=3)
             ctk.CTkLabel(r_acc, text=f"{acc['name']} ({acc['type']})", font=ctk.CTkFont(size=12), text_color="#cbd5e1").pack(side="left", padx=12, pady=6)
             ctk.CTkLabel(r_acc, text=f"{acc['balance']:.2f} {acc['currency_code']}", font=ctk.CTkFont(size=13, weight="bold"), text_color="#38bdf8").pack(side="right", padx=12, pady=6)
         ctk.CTkFrame(acc_box, height=6, fg_color="transparent").pack()
 
-        # Coloana dreaptă: Top Cheltuieli pe Categorii (GROUP BY)
         cat_box = ctk.CTkFrame(mid_row, fg_color=BG_CARD, corner_radius=12, border_width=1, border_color=BORDER_SUBTLE)
         cat_box.grid(row=0, column=1, padx=6, sticky="nsew")
         ctk.CTkLabel(
@@ -284,20 +286,8 @@ class FinanceApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), text_color="#f8fafc"
         ).pack(anchor="w", padx=16, pady=(10, 6))
 
-        cursor.execute("""
-            SELECT COALESCE(c.name, 'Necategorisit') AS cat_name, SUM(t.amount) AS total_cat
-            FROM transactions t
-            JOIN accounts a ON t.source_account_id = a.id
-            LEFT JOIN subcategories s ON t.subcategory_id = s.id
-            LEFT JOIN categories c ON s.category_id = c.id
-            WHERE a.user_id = %s AND t.type = 'CHELTUIALA'
-            GROUP BY c.name
-            ORDER BY total_cat DESC
-            LIMIT 3
-        """, (self.current_user_id,))
-        cat_rows = cursor.fetchall()
+        cat_rows = summary["top_categories"]
         max_cat = max((float(r["total_cat"]) for r in cat_rows), default=1.0)
-
         if not cat_rows:
             ctk.CTkLabel(cat_box, text="Nicio cheltuială înregistrată încă.", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(pady=24)
         else:
@@ -314,7 +304,6 @@ class FinanceApp(ctk.CTk):
                 pbar.pack(fill="x", pady=(2, 2))
                 self._animate_progress(pbar, min(val_c / max_cat, 1.0))
 
-        # Tabel Tranzacții + Filtru
         table_card = ctk.CTkFrame(self.main_frame, fg_color=BG_CARD, corner_radius=12, border_width=1, border_color=BORDER_SUBTLE)
         table_card.pack(fill="both", expand=True, padx=10, pady=(8, 6))
 
@@ -349,45 +338,16 @@ class FinanceApp(ctk.CTk):
         def load_transactions(*_):
             for item in tree.get_children():
                 tree.delete(item)
-            c_tbl = self.get_connection()
-            if not c_tbl:
-                return
-            cur_tbl = c_tbl.cursor(dictionary=True)
-
-            t_filter = filter_type_var.get()
-            q_text = f"%{search_var.get().strip()}%"
-
-            sql = """
-                SELECT t.id, t.type, t.amount,
-                       COALESCE(a_src.name, '—') AS src_name,
-                       COALESCE(a_dst.name, '—') AS dst_name,
-                       COALESCE(pm.name, '—') AS pm_name,
-                       COALESCE(s.name, 'General') AS subcat_name,
-                       COALESCE(t.description, '—') AS descr,
-                       DATE_FORMAT(t.transaction_date, '%d.%m.%Y %H:%i') AS tx_date
-                FROM transactions t
-                LEFT JOIN accounts a_src ON t.source_account_id = a_src.id
-                LEFT JOIN accounts a_dst ON t.destination_account_id = a_dst.id
-                LEFT JOIN payment_methods pm ON t.payment_method_id = pm.id
-                LEFT JOIN subcategories s ON t.subcategory_id = s.id
-                WHERE (a_src.user_id = %s OR a_dst.user_id = %s)
-                  AND (COALESCE(t.description, '') LIKE %s OR COALESCE(s.name, '') LIKE %s)
-            """
-            params = [self.current_user_id, self.current_user_id, q_text, q_text]
-            if t_filter != "TOATE":
-                sql += " AND t.type = %s"
-                params.append(t_filter)
-            sql += " ORDER BY t.transaction_date DESC, t.id DESC LIMIT 25"
-
-            cur_tbl.execute(sql, tuple(params))
-            for r in cur_tbl.fetchall():
-                prefix = "+" if r["type"] == "VENIT" else ("-" if r["type"] == "CHELTUIALA" else "")
-                tree.insert("", "end", tags=(r["type"],), values=(
-                    r["id"], r["type"], f"{prefix}{r['amount']:.2f} RON",
-                    r["src_name"], r["dst_name"], r["pm_name"], r["subcat_name"], r["descr"], r["tx_date"]
-                ))
-            cur_tbl.close()
-            c_tbl.close()
+            try:
+                rows = db.get_transactions(self.current_user_id, filter_type_var.get(), search_var.get())
+                for r in rows:
+                    prefix = "+" if r["type"] == "VENIT" else ("-" if r["type"] == "CHELTUIALA" else "")
+                    tree.insert("", "end", tags=(r["type"],), values=(
+                        r["id"], r["type"], f"{prefix}{r['amount']:.2f} RON",
+                        r["src_name"], r["dst_name"], r["pm_name"], r["subcat_name"], r["descr"], r["tx_date"]
+                    ))
+            except Exception as err:
+                messagebox.showerror("Eroare Interogare", str(err))
 
         search_entry = ctk.CTkEntry(top_bar, textvariable=search_var, placeholder_text="Caută descriere / categorie...", width=210, height=32)
         search_entry.pack(side="right", padx=(8, 0))
@@ -400,35 +360,19 @@ class FinanceApp(ctk.CTk):
 
         load_transactions()
         tree.pack(fill="both", expand=True)
-        cursor.close()
-        conn.close()
 
     def _create_kpi_card(self, parent, col, title, numeric_val, prefix, subtitle, color):
         card = ctk.CTkFrame(parent, corner_radius=12, fg_color=BG_CARD, border_width=1, border_color=BORDER_SUBTLE)
         card.grid(row=0, column=col, padx=6, sticky="nsew")
 
-        accent_bar = ctk.CTkFrame(card, height=4, fg_color=color, corner_radius=2)
-        accent_bar.pack(fill="x", padx=16, pady=(10, 6))
+        ctk.CTkFrame(card, height=4, fg_color=color, corner_radius=2).pack(fill="x", padx=16, pady=(10, 6))
+        ctk.CTkLabel(card, text=title, font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"), text_color=TEXT_MUTED).pack(anchor="w", padx=16)
 
-        ctk.CTkLabel(
-            card, text=title,
-            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
-            text_color=TEXT_MUTED
-        ).pack(anchor="w", padx=16)
-
-        val_lbl = ctk.CTkLabel(
-            card, text=f"{prefix}0.00 RON",
-            font=ctk.CTkFont(family="Segoe UI", size=19, weight="bold"),
-            text_color=color
-        )
+        val_lbl = ctk.CTkLabel(card, text=f"{prefix}0.00 RON", font=ctk.CTkFont(family="Segoe UI", size=19, weight="bold"), text_color=color)
         val_lbl.pack(anchor="w", padx=16, pady=(2, 2))
         self._animate_kpi_value(val_lbl, numeric_val, prefix=prefix)
 
-        ctk.CTkLabel(
-            card, text=subtitle,
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color="#64748b"
-        ).pack(anchor="w", padx=16, pady=(0, 10))
+        ctk.CTkLabel(card, text=subtitle, font=ctk.CTkFont(family="Segoe UI", size=11), text_color="#64748b").pack(anchor="w", padx=16, pady=(0, 10))
 
     # =========================================================================
     # 2. ADĂUGARE TRANZACȚIE
@@ -436,27 +380,15 @@ class FinanceApp(ctk.CTk):
     def show_add_transaction(self):
         self._set_active_nav("add_tx")
         self.clear_main_frame()
-        conn = self.get_connection()
-        if not conn:
+        try:
+            meta = db.get_form_metadata(self.current_user_id)
+        except Exception as err:
+            messagebox.showerror("Eroare Bază de Date", str(err))
             return
-        cursor = conn.cursor(dictionary=True)
 
-        cursor.execute("SELECT id, name, balance FROM accounts WHERE user_id = %s", (self.current_user_id,))
-        accounts = cursor.fetchall()
-
-        cursor.execute("""
-            SELECT s.id, CONCAT(c.name, '  →  ', s.name) AS full_name
-            FROM subcategories s
-            JOIN categories c ON s.category_id = c.id
-            WHERE c.user_id IS NULL OR c.user_id = %s
-        """, (self.current_user_id,))
-        subcats = cursor.fetchall()
-
-        cursor.execute("SELECT id, name, masked_details FROM payment_methods WHERE user_id = %s", (self.current_user_id,))
-        pay_methods = cursor.fetchall()
-
-        cursor.close()
-        conn.close()
+        accounts = meta["accounts"]
+        subcats = meta["subcats"]
+        pay_methods = meta["pay_methods"]
 
         if not accounts:
             ctk.CTkLabel(self.main_frame, text="Nu există conturi în baza de date!", font=ctk.CTkFont(size=16)).pack(pady=40)
@@ -529,34 +461,12 @@ class FinanceApp(ctk.CTk):
                 messagebox.showerror("Eroare Logică", "La transfer, contul sursă trebuie să fie diferit de contul destinație!")
                 return
 
-            conn_tx = self.get_connection()
-            if not conn_tx:
-                return
-            cur = conn_tx.cursor()
             try:
-                conn_tx.start_transaction()
-                cur.execute("""
-                    INSERT INTO transactions (
-                        source_account_id, destination_account_id, payment_method_id,
-                        subcategory_id, type, amount, description
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (src_id, dst_id, pm_id, sub_id, t_type, val, desc))
-
-                if src_id:
-                    cur.execute("UPDATE accounts SET balance = balance - %s WHERE id = %s", (val, src_id))
-                if dst_id:
-                    cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (val, dst_id))
-
-                conn_tx.commit()
+                db.create_transaction_acid(src_id, dst_id, pm_id, sub_id, t_type, val, desc)
                 self.show_dashboard()
                 self.show_toast(f"✓ Tranzacție ({t_type}: {val:.2f} RON) salvată ACID!", "success")
-            except mysql.connector.Error as err:
-                conn_tx.rollback()
+            except Exception as err:
                 messagebox.showerror("Eroare Bază de Date (Rollback)", f"Operațiunea a fost anulată:\n{err}")
-            finally:
-                cur.close()
-                conn_tx.close()
 
         ctk.CTkButton(
             self.main_frame, text="✓ Salvează Tranzacția în MySQL",
@@ -571,10 +481,11 @@ class FinanceApp(ctk.CTk):
     def show_planned_payments(self):
         self._set_active_nav("planned")
         self.clear_main_frame()
-        conn = self.get_connection()
-        if not conn:
+        try:
+            payments = db.get_planned_payments(self.current_user_id)
+        except Exception as err:
+            messagebox.showerror("Eroare Bază de Date", str(err))
             return
-        cursor = conn.cursor(dictionary=True)
 
         header_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         header_frame.pack(fill="x", padx=12, pady=(6, 14))
@@ -610,25 +521,13 @@ class FinanceApp(ctk.CTk):
             anchor = "w" if col in ("Titlu Plată", "Cont Asociat") else ("e" if col == "Sumă" else "center")
             tree.column(col, width=col_widths[col], anchor=anchor)
 
-        cursor.execute("""
-            SELECT pp.id, pp.title, pp.amount, pp.due_date, pp.status,
-                   COALESCE(rr.frequency, 'MANUAL') AS freq, a.name AS account_name
-            FROM planned_payments pp
-            JOIN accounts a ON pp.account_id = a.id
-            LEFT JOIN recurring_rules rr ON pp.recurring_rule_id = rr.id
-            WHERE a.user_id = %s
-            ORDER BY pp.due_date ASC
-        """, (self.current_user_id,))
-
-        for row in cursor.fetchall():
+        for row in payments:
             tree.insert("", "end", tags=(row["status"],), values=(
                 row["id"], row["title"], f"{row['amount']:.2f} RON",
                 str(row["due_date"]), row["status"], row["freq"], row["account_name"]
             ))
 
         tree.pack(fill="both", expand=True)
-        cursor.close()
-        conn.close()
 
         def pay_selected():
             selected = tree.selection()
@@ -644,31 +543,12 @@ class FinanceApp(ctk.CTk):
                 self.show_toast(f"ℹ Plata are deja statusul '{status}'.", "info")
                 return
 
-            conn_pay = self.get_connection()
-            if not conn_pay:
-                return
-            cur = conn_pay.cursor(dictionary=True)
             try:
-                conn_pay.start_transaction()
-                cur.execute("SELECT * FROM planned_payments WHERE id = %s FOR UPDATE", (pp_id,))
-                pp_row = cur.fetchone()
-
-                cur.execute("UPDATE planned_payments SET status = 'ACHITAT' WHERE id = %s", (pp_id,))
-                cur.execute("""
-                    INSERT INTO transactions (source_account_id, subcategory_id, type, amount, description)
-                    VALUES (%s, %s, 'CHELTUIALA', %s, %s)
-                """, (pp_row["account_id"], pp_row["subcategory_id"], pp_row["amount"], f"Plată scadentă: {pp_row['title']}"))
-                cur.execute("UPDATE accounts SET balance = balance - %s WHERE id = %s", (pp_row["amount"], pp_row["account_id"]))
-
-                conn_pay.commit()
+                title_paid = db.pay_planned_payment_acid(pp_id)
                 self.show_planned_payments()
-                self.show_toast(f"✓ '{pp_row['title']}' achitată și decontată ACID!", "success")
-            except mysql.connector.Error as err:
-                conn_pay.rollback()
+                self.show_toast(f"✓ '{title_paid}' achitată și decontată ACID!", "success")
+            except Exception as err:
                 messagebox.showerror("Eroare Tranzacție", f"Operațiunea a eșuat:\n{err}")
-            finally:
-                cur.close()
-                conn_pay.close()
 
         ctk.CTkButton(
             self.main_frame, text="✓ Marchează ca ACHITAT (Execută Tranzacția ACID)",
@@ -680,23 +560,14 @@ class FinanceApp(ctk.CTk):
     def show_add_recurring_rule(self):
         self._set_active_nav("planned")
         self.clear_main_frame()
-        conn = self.get_connection()
-        if not conn:
+        try:
+            meta = db.get_form_metadata(self.current_user_id)
+        except Exception as err:
+            messagebox.showerror("Eroare Bază de Date", str(err))
             return
-        cursor = conn.cursor(dictionary=True)
 
-        cursor.execute("SELECT id, name FROM accounts WHERE user_id = %s", (self.current_user_id,))
-        accounts = cursor.fetchall()
-
-        cursor.execute("""
-            SELECT s.id, CONCAT(c.name, '  →  ', s.name) AS full_name
-            FROM subcategories s
-            JOIN categories c ON s.category_id = c.id
-            WHERE (c.user_id IS NULL OR c.user_id = %s) AND c.is_income = FALSE
-        """, (self.current_user_id,))
-        subcats = cursor.fetchall()
-        cursor.close()
-        conn.close()
+        accounts = meta["accounts"]
+        subcats = [s for s in meta["subcats"] if not s["is_income"]]
 
         hdr = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         hdr.pack(fill="x", padx=12, pady=(6, 16))
@@ -751,52 +622,15 @@ class FinanceApp(ctk.CTk):
                 messagebox.showerror("Eroare Validare", "Verifică ziua scadenței (1-28) și suma (> 0).")
                 return
 
-            acc_id = acc_map[acc_var.get()]
-            sub_id = sub_map[sub_var.get()]
-            freq = freq_var.get()
-            today = date.today()
-
-            conn_rr = self.get_connection()
-            if not conn_rr:
-                return
-            cur = conn_rr.cursor()
             try:
-                conn_rr.start_transaction()
-                cur.execute("""
-                    INSERT INTO recurring_rules (user_id, frequency, due_day, start_date, is_active)
-                    VALUES (%s, %s, %s, %s, TRUE)
-                """, (self.current_user_id, freq, due_day, today))
-                rule_id = cur.lastrowid
-
-                months_to_generate = [0, 1] if freq == "LUNAR" else [0]
-                generated_count = 0
-                for offset in months_to_generate:
-                    y = today.year + (today.month + offset - 1) // 12
-                    m = (today.month + offset - 1) % 12 + 1
-                    last_day = calendar.monthrange(y, m)[1]
-                    d = min(due_day, last_day)
-                    due_dt = date(y, m, d)
-                    target_m = date(y, m, 1)
-
-                    if due_dt >= today:
-                        cur.execute("""
-                            INSERT INTO planned_payments (
-                                account_id, subcategory_id, recurring_rule_id,
-                                title, amount, target_month, due_date, status
-                            )
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, 'PLANIFICAT')
-                        """, (acc_id, sub_id, rule_id, f"{title} ({m:02d}/{y})", amount, target_m, due_dt))
-                        generated_count += 1
-
-                conn_rr.commit()
+                cnt = db.create_recurring_rule_acid(
+                    self.current_user_id, acc_map[acc_var.get()], sub_map[sub_var.get()],
+                    title, freq_var.get(), due_day, amount
+                )
                 self.show_planned_payments()
-                self.show_toast(f"✓ Regulă salvată! S-au generat {generated_count} plăți în scadențar.", "success")
-            except mysql.connector.Error as err:
-                conn_rr.rollback()
+                self.show_toast(f"✓ Regulă salvată! S-au generat {cnt} plăți în scadențar.", "success")
+            except Exception as err:
                 messagebox.showerror("Eroare MySQL", str(err))
-            finally:
-                cur.close()
-                conn_rr.close()
 
         btn_row = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         btn_row.pack(fill="x", padx=12, pady=18)
@@ -804,15 +638,16 @@ class FinanceApp(ctk.CTk):
         ctk.CTkButton(btn_row, text="✓ Salvează Regula și Generează Plățile", fg_color=ACCENT_BLUE, hover_color=ACCENT_HOVER, height=40, corner_radius=8, font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), command=save_rule_and_generate).pack(side="right")
 
     # =========================================================================
-    # 4. OBIECTIVE DE ECONOMISIRE (Bare Animate + Creare Obiectiv Nou)
+    # 4. OBIECTIVE DE ECONOMISIRE
     # =========================================================================
     def show_savings_goals(self):
         self._set_active_nav("goals")
         self.clear_main_frame()
-        conn = self.get_connection()
-        if not conn:
+        try:
+            goals = db.get_savings_goals(self.current_user_id)
+        except Exception as err:
+            messagebox.showerror("Eroare Bază de Date", str(err))
             return
-        cursor = conn.cursor(dictionary=True)
 
         hdr = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         hdr.pack(fill="x", padx=12, pady=(6, 14))
@@ -829,17 +664,6 @@ class FinanceApp(ctk.CTk):
             height=40, corner_radius=8,
             font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold")
         ).pack(side="right", pady=6)
-
-        cursor.execute("""
-            SELECT sg.id, sg.title AS name, sg.target_amount, sg.current_amount, sg.deadline, a.name AS account_name
-            FROM savings_goals sg
-            JOIN accounts a ON sg.account_id = a.id
-            WHERE a.user_id = %s
-            ORDER BY sg.id ASC
-        """, (self.current_user_id,))
-        goals = cursor.fetchall()
-        cursor.close()
-        conn.close()
 
         if not goals:
             ctk.CTkLabel(self.main_frame, text="Nu există obiective definite în tabela savings_goals.", font=ctk.CTkFont(size=14), text_color=TEXT_MUTED).pack(pady=40)
@@ -862,17 +686,8 @@ class FinanceApp(ctk.CTk):
             top_row = ctk.CTkFrame(card, fg_color="transparent")
             top_row.pack(fill="x", padx=20, pady=(16, 6))
 
-            ctk.CTkLabel(
-                top_row, text=f"{g['name']}",
-                font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold"),
-                text_color="#f8fafc"
-            ).pack(side="left")
-
-            ctk.CTkLabel(
-                top_row, text=f"Cont: {g['account_name']}",
-                font=ctk.CTkFont(family="Segoe UI", size=12),
-                text_color="#38bdf8"
-            ).pack(side="left", padx=(14, 0))
+            ctk.CTkLabel(top_row, text=f"{g['name']}", font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold"), text_color="#f8fafc").pack(side="left")
+            ctk.CTkLabel(top_row, text=f"Cont: {g['account_name']}", font=ctk.CTkFont(family="Segoe UI", size=12), text_color="#38bdf8").pack(side="left", padx=(14, 0))
 
             deadline_txt = f"Termen limită: {g['deadline']}" if g["deadline"] else "Fără termen limită"
             ctk.CTkLabel(top_row, text=deadline_txt, font=ctk.CTkFont(family="Segoe UI", size=12), text_color=TEXT_MUTED).pack(side="right")
@@ -893,7 +708,7 @@ class FinanceApp(ctk.CTk):
                 text_color="#22c55e" if is_completed else "#cbd5e1"
             ).pack(side="left")
 
-            def make_deposit_fn(goal_id=g["id"], goal_name=g["name"]):
+            def make_deposit_fn(goal_id=g["id"], goal_name=g["name"], dest_acc_id=g["account_id"]):
                 def deposit():
                     win = ctk.CTkToplevel(self)
                     win.title("Alocare Fonduri către Obiectiv")
@@ -901,17 +716,7 @@ class FinanceApp(ctk.CTk):
                     win.configure(fg_color=BG_CARD)
                     win.grab_set()
 
-                    c_acc = self.get_connection()
-                    if not c_acc:
-                        return
-                    cur_acc = c_acc.cursor(dictionary=True)
-                    cur_acc.execute("SELECT id, name, balance FROM accounts WHERE user_id = %s", (self.current_user_id,))
-                    user_accs = cur_acc.fetchall()
-                    cur_acc.execute("SELECT account_id FROM savings_goals WHERE id = %s", (goal_id,))
-                    dest_acc_id = cur_acc.fetchone()["account_id"]
-                    cur_acc.close()
-                    c_acc.close()
-
+                    user_accs = db.get_form_metadata(self.current_user_id)["accounts"]
                     ctk.CTkLabel(win, text=f"Alocare: {goal_name}", font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold")).pack(pady=(18, 12))
 
                     acc_options = {f"{a['name']}  (Sold: {a['balance']} RON)": a["id"] for a in user_accs}
@@ -934,31 +739,13 @@ class FinanceApp(ctk.CTk):
                             messagebox.showerror("Eroare", "Introdu o sumă validă pozitivă.", parent=win)
                             return
 
-                        src_id = acc_options[src_var.get()]
-                        c_dep = self.get_connection()
-                        if not c_dep:
-                            return
-                        cur_dep = c_dep.cursor()
                         try:
-                            c_dep.start_transaction()
-                            cur_dep.execute("UPDATE savings_goals SET current_amount = current_amount + %s WHERE id = %s", (amt, goal_id))
-                            if src_id != dest_acc_id:
-                                cur_dep.execute("UPDATE accounts SET balance = balance - %s WHERE id = %s", (amt, src_id))
-                                cur_dep.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (amt, dest_acc_id))
-                                cur_dep.execute("""
-                                    INSERT INTO transactions (source_account_id, destination_account_id, type, amount, description)
-                                    VALUES (%s, %s, 'TRANSFER', %s, %s)
-                                """, (src_id, dest_acc_id, amt, f"Economisire: {goal_name}"))
-                            c_dep.commit()
+                            db.allocate_to_goal_acid(goal_id, goal_name, acc_options[src_var.get()], dest_acc_id, amt)
                             win.destroy()
                             self.show_savings_goals()
                             self.show_toast(f"✓ S-au alocat {amt:.2f} RON către '{goal_name}'!", "success")
-                        except mysql.connector.Error as err:
-                            c_dep.rollback()
+                        except Exception as err:
                             messagebox.showerror("Eroare MySQL (Rollback)", str(err), parent=win)
-                        finally:
-                            cur_dep.close()
-                            c_dep.close()
 
                     ctk.CTkButton(win, text="✓ Confirmă Alocarea", command=confirm_alloc, fg_color="#16a34a", hover_color="#15803d", height=36, width=180, font=ctk.CTkFont(weight="bold")).pack(pady=4)
                 return deposit
@@ -975,15 +762,7 @@ class FinanceApp(ctk.CTk):
         win.configure(fg_color=BG_CARD)
         win.grab_set()
 
-        c_acc = self.get_connection()
-        if not c_acc:
-            return
-        cur_acc = c_acc.cursor(dictionary=True)
-        cur_acc.execute("SELECT id, name FROM accounts WHERE user_id = %s", (self.current_user_id,))
-        user_accs = cur_acc.fetchall()
-        cur_acc.close()
-        c_acc.close()
-
+        user_accs = db.get_form_metadata(self.current_user_id)["accounts"]
         ctk.CTkLabel(win, text="Obiectiv Nou de Economisire", font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold")).pack(pady=(18, 12))
 
         ctk.CTkLabel(win, text="Denumire obiectiv:", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor="w", padx=28)
@@ -1018,28 +797,16 @@ class FinanceApp(ctk.CTk):
                 return
 
             dl = deadline_entry.get().strip() or None
-            acc_id = acc_map[acc_var.get()]
-
-            c_new = self.get_connection()
-            if not c_new:
-                return
-            cur_new = c_new.cursor()
             try:
-                cur_new.execute("""
-                    INSERT INTO savings_goals (account_id, title, target_amount, current_amount, deadline)
-                    VALUES (%s, %s, %s, 0.00, %s)
-                """, (acc_id, t, tgt, dl))
-                c_new.commit()
+                db.create_savings_goal(acc_map[acc_var.get()], t, tgt, dl)
                 win.destroy()
                 self.show_savings_goals()
                 self.show_toast(f"✓ Obiectivul '{t}' a fost creat!", "success")
-            except mysql.connector.Error as err:
+            except Exception as err:
                 messagebox.showerror("Eroare MySQL", str(err), parent=win)
-            finally:
-                cur_new.close()
-                c_new.close()
 
         ctk.CTkButton(win, text="✓ Salvează Obiectivul", command=save_goal, fg_color=ACCENT_BLUE, hover_color=ACCENT_HOVER, height=36, width=190, font=ctk.CTkFont(weight="bold")).pack()
+
 
 if __name__ == "__main__":
     app = FinanceApp()
