@@ -46,7 +46,6 @@ class FinanceApp(ctk.CTk):
         tab_login = tabs.add("Autentificare")
         tab_reg = tabs.add("Cont Nou")
 
-        # --- TAB AUTENTIFICARE ---
         ctk.CTkLabel(tab_login, text="Email:", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor="w", padx=12, pady=(8, 2))
         email_ent = ctk.CTkEntry(tab_login, placeholder_text="ex: rares@student.utcluj.ro", width=320, height=34)
         email_ent.pack(padx=12)
@@ -69,7 +68,6 @@ class FinanceApp(ctk.CTk):
 
         ctk.CTkButton(tab_login, text="⚡ Acces Rapid Demo (User #1)", command=demo_login, fg_color="#263040", hover_color="#334155", width=320, height=32, font=ctk.CTkFont(size=12)).pack(padx=12)
 
-        # --- TAB CONT NOU ---
         ctk.CTkLabel(tab_reg, text="Nume Complet:", font=ctk.CTkFont(size=12), text_color=TEXT_MUTED).pack(anchor="w", padx=12, pady=(6, 2))
         reg_name = ctk.CTkEntry(tab_reg, placeholder_text="ex: Andrei Popescu", width=320, height=32)
         reg_name.pack(padx=12)
@@ -106,7 +104,6 @@ class FinanceApp(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- SIDEBAR ---
         self.sidebar = ctk.CTkFrame(self, width=250, corner_radius=0, fg_color=BG_SIDEBAR)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_propagate(False)
@@ -176,15 +173,11 @@ class FinanceApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold")
         ).pack(fill="x", padx=12, pady=(0, 10))
 
-        # --- ZONA PRINCIPALĂ ---
         self.main_frame = ctk.CTkFrame(self, corner_radius=14, fg_color=BG_DARK)
         self.main_frame.grid(row=0, column=1, padx=22, pady=18, sticky="nsew")
 
         self.show_dashboard()
 
-    # =========================================================================
-    # DIALOG CONFIGURARE CONEXIUNE (delegă validarea către db.py)
-    # =========================================================================
     def open_db_config_dialog(self):
         win = ctk.CTkToplevel(self)
         win.title("Configurare Conexiune MySQL")
@@ -233,9 +226,6 @@ class FinanceApp(ctk.CTk):
             font=ctk.CTkFont(weight="bold")
         ).pack(pady=12)
 
-    # =========================================================================
-    # EFECTE VIZUALE & STILIZARE
-    # =========================================================================
     def show_toast(self, message, kind="success"):
         colors = {
             "success": ("#14532d", "#22c55e"),
@@ -314,9 +304,6 @@ class FinanceApp(ctk.CTk):
         for widget in self.main_frame.winfo_children():
             widget.destroy()
 
-    # =========================================================================
-    # 1. DASHBOARD PREDICTIV
-    # =========================================================================
     def show_dashboard(self):
         self._set_active_nav("dashboard")
         self.clear_main_frame()
@@ -463,9 +450,6 @@ class FinanceApp(ctk.CTk):
 
         ctk.CTkLabel(card, text=subtitle, font=ctk.CTkFont(family="Segoe UI", size=11), text_color="#64748b").pack(anchor="w", padx=16, pady=(0, 10))
 
-    # =========================================================================
-    # 2. ADĂUGARE TRANZACȚIE
-    # =========================================================================
     def show_add_transaction(self):
         self._set_active_nav("add_tx")
         self.clear_main_frame()
@@ -564,9 +548,6 @@ class FinanceApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold")
         ).pack(pady=18, padx=12, anchor="e")
 
-    # =========================================================================
-    # 3. PLĂȚI PLANIFICATE + REGULI DE RECURENȚĂ
-    # =========================================================================
     def show_planned_payments(self):
         self._set_active_nav("planned")
         self.clear_main_frame()
@@ -726,9 +707,6 @@ class FinanceApp(ctk.CTk):
         ctk.CTkButton(btn_row, text="← Înapoi la Scadențar", fg_color="#334155", hover_color="#475569", height=40, corner_radius=8, command=self.show_planned_payments).pack(side="left")
         ctk.CTkButton(btn_row, text="✓ Salvează Regula și Generează Plățile", fg_color=ACCENT_BLUE, hover_color=ACCENT_HOVER, height=40, corner_radius=8, font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"), command=save_rule_and_generate).pack(side="right")
 
-    # =========================================================================
-    # 4. OBIECTIVE DE ECONOMISIRE
-    # =========================================================================
     def show_savings_goals(self):
         self._set_active_nav("goals")
         self.clear_main_frame()

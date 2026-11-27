@@ -1,2 +1,6 @@
 .env
 app/config_vault.db
+
+__pycache__/
+*.pyc
+.brud/
