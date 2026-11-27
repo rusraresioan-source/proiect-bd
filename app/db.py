@@ -1,35 +1,79 @@
 import os
+import base64
+import hashlib
+import sqlite3
 import calendar
 from datetime import date
 from decimal import Decimal
 import mysql.connector
 
-
-def load_env_file(filepath=".env"):
-    if os.path.exists(filepath):
-        with open(filepath, "r", encoding="utf-8") as ef:
-            for line in ef:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    k, v = line.split("=", 1)
-                    os.environ.setdefault(k.strip(), v.strip())
+VAULT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_vault.db")
+_VAULT_SECRET = b"ProiectBD_UTCN_CUNBM_2026_SecureVault!"
 
 
-load_env_file()
+def _protect_secret(plain_text):
+    if not plain_text:
+        return ""
+    raw = plain_text.encode("utf-8")
+    key_stream = hashlib.sha256(_VAULT_SECRET).digest()
+    xored = bytes(b ^ key_stream[i % len(key_stream)] for i, b in enumerate(raw))
+    return base64.urlsafe_b64encode(xored).decode("ascii")
 
 
-def get_default_db_config():
-    port_raw = os.getenv("DB_PORT", "").strip()
-    return {
-        "host": os.getenv("DB_HOST", "").strip(),
-        "port": int(port_raw) if port_raw.isdigit() else 3306,
-        "database": os.getenv("DB_NAME", "").strip(),
-        "user": os.getenv("DB_USER", "").strip(),
-        "password": os.getenv("DB_PASSWORD", ""),
-    }
+def _unprotect_secret(token_text):
+    if not token_text:
+        return ""
+    xored = base64.urlsafe_b64decode(token_text.encode("ascii"))
+    key_stream = hashlib.sha256(_VAULT_SECRET).digest()
+    raw = bytes(b ^ key_stream[i % len(key_stream)] for i, b in enumerate(xored))
+    return raw.decode("utf-8")
 
 
-DB_CONFIG = get_default_db_config()
+def _init_local_vault():
+    conn = sqlite3.connect(VAULT_PATH)
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS server_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                host TEXT NOT NULL,
+                port INTEGER NOT NULL CHECK (port BETWEEN 1 AND 65535),
+                database_name TEXT NOT NULL,
+                db_user TEXT NOT NULL,
+                encrypted_password TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cur = conn.execute("SELECT COUNT(*) FROM server_config WHERE id = 1")
+        if cur.fetchone()[0] == 0:
+            conn.execute("""
+                INSERT INTO server_config (id, host, port, database_name, db_user, encrypted_password)
+                VALUES (1, ?, ?, ?, ?, ?)
+            """, ("localhost", 3306, "personal_finance", "app_user", _protect_secret("app_pass")))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def load_vault_config():
+    _init_local_vault()
+    conn = sqlite3.connect(VAULT_PATH)
+    try:
+        row = conn.execute("""
+            SELECT host, port, database_name, db_user, encrypted_password
+            FROM server_config WHERE id = 1
+        """).fetchone()
+        return {
+            "host": row[0],
+            "port": int(row[1]),
+            "database": row[2],
+            "user": row[3],
+            "password": _unprotect_secret(row[4]),
+        }
+    finally:
+        conn.close()
+
+
+DB_CONFIG = load_vault_config()
 
 
 def get_connection():
@@ -37,9 +81,89 @@ def get_connection():
 
 
 def test_and_update_config(new_cfg):
-    conn = mysql.connector.connect(**new_cfg)
-    conn.close()
+    # 1. Validăm conexiunea live la serverul MySQL înainte de a salva în SQLite
+    conn_mysql = mysql.connector.connect(**new_cfg)
+    conn_mysql.close()
+
+    # 2. Salvăm atomic în baza de date locală SQLite cu parola criptată
+    _init_local_vault()
+    conn_sq = sqlite3.connect(VAULT_PATH)
+    try:
+        conn_sq.execute("""
+            UPDATE server_config
+            SET host = ?, port = ?, database_name = ?, db_user = ?,
+                encrypted_password = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = 1
+        """, (
+            new_cfg["host"], int(new_cfg["port"]), new_cfg["database"],
+            new_cfg["user"], _protect_secret(new_cfg["password"])
+        ))
+        conn_sq.commit()
+    finally:
+        conn_sq.close()
+
     DB_CONFIG.update(new_cfg)
+
+
+def hash_password(raw_password):
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", raw_password.encode("utf-8"), salt, 100_000)
+    return f"pbkdf2${salt.hex()}${dk.hex()}"
+
+
+def verify_password(raw_password, stored_hash):
+    if stored_hash.startswith("pbkdf2$"):
+        _, salt_hex, dk_hex = stored_hash.split("$", 2)
+        dk = hashlib.pbkdf2_hmac("sha256", raw_password.encode("utf-8"), bytes.fromhex(salt_hex), 100_000)
+        return dk.hex() == dk_hex
+    legacy_sha256 = hashlib.sha256(raw_password.encode("utf-8")).hexdigest()
+    return stored_hash in (legacy_sha256, raw_password)
+
+
+def authenticate_user(email, password):
+    conn = get_connection()
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT id, full_name, email, password_hash FROM users WHERE email = %s", (email.strip(),))
+        user = cur.fetchone()
+        if not user:
+            return None
+        if verify_password(password, user["password_hash"]):
+            return {"id": user["id"], "full_name": user["full_name"], "email": user["email"]}
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def register_user_acid(full_name, email, password):
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        conn.start_transaction()
+        cur.execute(
+            "INSERT INTO users (full_name, email, password_hash) VALUES (%s, %s, %s)",
+            (full_name.strip(), email.strip(), hash_password(password))
+        )
+        new_user_id = cur.lastrowid
+
+        cur.execute("SELECT id FROM currencies WHERE code = 'RON' LIMIT 1")
+        row_curr = cur.fetchone()
+        curr_id = row_curr[0] if row_curr else 1
+
+        cur.execute("""
+            INSERT INTO accounts (user_id, currency_id, name, type, balance)
+            VALUES (%s, %s, 'Cont Principal', 'CURENT', 0.00)
+        """, (new_user_id, curr_id))
+
+        conn.commit()
+        return {"id": new_user_id, "full_name": full_name.strip(), "email": email.strip()}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
 
 def get_dashboard_summary(user_id):
@@ -328,59 +452,6 @@ def create_savings_goal(account_id, title, target_amount, deadline):
             VALUES (%s, %s, %s, 0.00, %s)
         """, (account_id, title, target_amount, deadline))
         conn.commit()
-    finally:
-        cur.close()
-        conn.close()
-
-
-def hash_password(raw_password):
-    import hashlib
-    return hashlib.sha256(raw_password.encode("utf-8")).hexdigest()
-
-
-def authenticate_user(email, password):
-    conn = get_connection()
-    cur = conn.cursor(dictionary=True)
-    try:
-        cur.execute("SELECT id, full_name, email, password_hash FROM users WHERE email = %s", (email.strip(),))
-        user = cur.fetchone()
-        if not user:
-            return None
-        # Acceptăm atât parola criptată SHA-256, cât și parola din seed dacă e test
-        if user["password_hash"] in (hash_password(password), password):
-            return {"id": user["id"], "full_name": user["full_name"], "email": user["email"]}
-        return None
-    finally:
-        cur.close()
-        conn.close()
-
-
-def register_user_acid(full_name, email, password):
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        conn.start_transaction()
-        cur.execute(
-            "INSERT INTO users (full_name, email, password_hash) VALUES (%s, %s, %s)",
-            (full_name.strip(), email.strip(), hash_password(password))
-        )
-        new_user_id = cur.lastrowid
-
-        # Găsim moneda RON (sau prima monedă disponibilă) și îi creăm automat un cont principal
-        cur.execute("SELECT id FROM currencies WHERE code = 'RON' LIMIT 1")
-        row_curr = cur.fetchone()
-        curr_id = row_curr[0] if row_curr else 1
-
-        cur.execute("""
-            INSERT INTO accounts (user_id, currency_id, name, type, balance)
-            VALUES (%s, %s, 'Cont Principal', 'CURENT', 0.00)
-        """, (new_user_id, curr_id))
-
-        conn.commit()
-        return {"id": new_user_id, "full_name": full_name.strip(), "email": email.strip()}
-    except Exception:
-        conn.rollback()
-        raise
     finally:
         cur.close()
         conn.close()
